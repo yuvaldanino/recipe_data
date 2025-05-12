@@ -1,7 +1,10 @@
 import json
 import re
 import random
+import spacy
 from recipe_scrapers import scrape_me
+
+nlp = spacy.load("en_core_web_sm")
 
 sample_urls = [
     # Previously working URLs
@@ -21,7 +24,7 @@ sample_urls = [
     "https://www.downshiftology.com/recipes/creamy-tuscan-chicken/"
 ]
 
-# Prompt templates (general and specific, but with generalized dish names)
+# Prompt templates
 prompt_templates = [
     "What's a tip for making {dish}?",
     "How do I make {dish} better?",
@@ -31,24 +34,37 @@ prompt_templates = [
     "How do I get the best results with {dish}?",
     "What's important to remember when making {dish}?",
     "What's a tip for cooking {main_ingredient}?",
-    "How do I avoid dry {main_ingredient}?",
     "How do I get the best results when cooking {main_ingredient}?"
 ]
+# Dryness-related prompts (only use if tip mentions moisture/dryness)
+dry_prompts = [
+    "How do I avoid dry {main_ingredient}?"
+]
 
-# Expanded actionable keywords
+dryness_keywords = ["dry", "moist", "moisture", "juicy", "overcooked", "undercooked", "tender", "succulent", "not dry", "not overcook", "not undercook", "keep moist", "keep juicy"]
+
+# Actionable keywords and reason/explanation phrases
 actionable_keywords = [
     "always", "never", "make sure", "let", "avoid", "important", "tip", "ensure", "best", "don't", "do not", "should", "must", "recommend", "careful", "keep", "use", "try", "allow", "rest", "cook", "bake", "stir", "whisk", "add", "remove", "check", "until", "before", "after", "because", "so that", "in order to", "to prevent", "to avoid", "to ensure", "why", "how"
 ]
+reason_phrases = ["because", "so that", "in order to", "to prevent", "to avoid", "to ensure", "for best results", "so you can", "so you get", "so you have", "so you don't", "so you do not"]
 
+# Helper: is the tip about dryness/moisture?
+def is_dryness_tip(sentence):
+    s = sentence.lower()
+    return any(kw in s for kw in dryness_keywords)
+
+# Helper: is the tip actionable and of sufficient quality?
 def is_actionable(sentence):
     s = sentence.lower()
-    if not (any(kw in s for kw in actionable_keywords) and len(s.split()) > 5):
-        return False
-    if any(x in s for x in ["because", "so that", "in order to", "to prevent", "to avoid", "to ensure", "why", "how"]):
-        return True
-    if re.match(r'^(let|add|use|keep|make|avoid|cook|bake|stir|whisk|check|allow|rest|remove|try|ensure|spray|transfer|place|prepare|microwave|blend|whisk|scatter|heat|cover|uncover|drain|increase|reduce|put|saute|assemble|preheat|sprinkle|garnish|remember|start|spray|transfer|mix|form|cook|insert|scatter|remove|tip|recommend|must|should|never|always|careful|important|best|don\'t|do not)\b', s):
-        return True
-    return False
+    # Must be at least 8 words or contain a reason/explanation phrase
+    long_enough = len(s.split()) >= 8
+    has_reason = any(phrase in s for phrase in reason_phrases)
+    # Imperative or keyword match
+    doc = nlp(sentence)
+    imperative = len(doc) > 0 and doc[0].pos_ == "VERB"
+    keyword_match = any(kw in s for kw in actionable_keywords)
+    return (long_enough or has_reason) and (imperative or keyword_match)
 
 def extract_sentences(text):
     if not text:
@@ -70,11 +86,8 @@ def extract_main_ingredient(title, tips):
     return "the dish"
 
 def generalize_dish_name(title):
-    # Remove possessives and first names, keep main dish type
-    # e.g., "Ashley's Meatballs" -> "meatballs"
-    # e.g., "The Best Spaghetti Bolognese Recipe" -> "spaghetti bolognese"
     title = re.sub(r"'s\s+", " ", title)
-    title = re.sub(r"[A-Z][a-z]+\s+", "", title, count=1)  # Remove first word if it's a name
+    title = re.sub(r"[A-Z][a-z]+\s+", "", title, count=1)
     title = re.sub(r"recipe", "", title, flags=re.IGNORECASE)
     title = re.sub(r"the best|best|easy|simple|classic|perfect|healthy|vegan|vegetarian|gluten[- ]?free|homemade|quick|ultimate|delicious|creamy|spicy|savory|sweet|tasty|authentic|traditional|easy|quick|one[- ]pot|one[- ]pan|oven[- ]baked|oven[- ]roasted|grilled|baked|fried|roasted|slow[- ]cooked|instant pot|air fryer|no[- ]bake|with.*", "", title, flags=re.IGNORECASE)
     title = re.sub(r"[^a-zA-Z ]", "", title)
@@ -93,8 +106,8 @@ def extract_tips(scraper):
     tips.update([s for s in extract_sentences(instructions) if is_actionable(s)])
     return list(tips)
 
-output_file = "cooking_tips.jsonl"
-test_output_file = "cooking_tips_test.jsonl"
+output_file = "cooking_tips_spacy.jsonl"
+test_output_file = "cooking_tips_spacy_test.jsonl"
 all_qa_pairs = []
 
 for url in sample_urls:
@@ -105,21 +118,22 @@ for url in sample_urls:
         main_ingredient = extract_main_ingredient(title, tips)
         dish = generalize_dish_name(title)
         for tip in tips:
-            # Choose one prompt template at random (general or specific)
-            template = random.choice(prompt_templates)
+            # Choose dryness prompt if tip is about dryness, else general prompt
+            if is_dryness_tip(tip):
+                template = random.choice(dry_prompts)
+            else:
+                template = random.choice(prompt_templates)
             prompt = template.format(dish=dish, main_ingredient=main_ingredient)
             qa = {"prompt": prompt, "response": tip}
             all_qa_pairs.append(qa)
     except Exception as e:
         print(f"Failed to scrape {url}: {e}")
 
-# Write all Q&A pairs to main file
 with open(output_file, "w", encoding="utf-8") as f:
     for qa in all_qa_pairs:
         json.dump(qa, f, ensure_ascii=False)
         f.write("\n")
 
-# Write a random sample of 50 Q&A pairs to test file
 sample_size = min(50, len(all_qa_pairs))
 test_sample = random.sample(all_qa_pairs, sample_size)
 with open(test_output_file, "w", encoding="utf-8") as f:
