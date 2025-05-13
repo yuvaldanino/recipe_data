@@ -2,5 +2,15 @@ recipe-scrapers>=14.36.0
 requests
 beautifulsoup4
 tqdm
-pandas 
+pandas==2.2.3
+numpy<2.0.0
 spacy
+transformers>=4.30.0
+datasets>=2.12.0
+torch>=2.0.0
+accelerate>=0.20.0
+peft>=0.4.0
+scipy
+huggingface_hub
+bitsandbytes>=0.41.0 ; platform_system != 'Windows'
+sentencepiece
