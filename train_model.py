@@ -7,10 +7,9 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling,
-    BitsAndBytesConfig
+    DataCollatorForLanguageModeling
 )
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model
 
 # Load the prepared JSONL data
 dataset = load_dataset('json', data_files='processed_data/tinyllama_training_data.jsonl')
@@ -20,7 +19,7 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     device_map="auto"
 )
 
@@ -38,11 +37,6 @@ lora_config = LoraConfig(
 model = get_peft_model(model, lora_config)
 model.train()  # Make sure the model is in training mode
 model.config.use_cache = False  # Disable caching (required for gradient checkpointing)
-
-# Enable gradient computation for all parameters
-for param in model.parameters():
-    if param.requires_grad:
-        param.data = param.data.to(torch.float16)
 
 # Define a function to tokenize the dataset
 def tokenize_function(examples):
@@ -95,7 +89,11 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset['train'],
-    data_collator=None  # We don't need a data collator since we're handling padding in tokenization
+    data_collator=DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,
+        pad_to_multiple_of=8
+    )
 )
 
 # Train the model
@@ -108,9 +106,4 @@ model = model.merge_and_unload()
 model.save_pretrained("merged_model")
 tokenizer.save_pretrained("merged_model")
 
-# Save the merged model to Hugging Face Hub
-# Note: You need to be logged in to Hugging Face Hub
-# Run: huggingface-cli login
-
-
-print("Training complete and model saved locally and to Hugging Face Hub!") 
+print("Training complete and model saved locally!") 
