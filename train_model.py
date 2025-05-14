@@ -35,8 +35,24 @@ lora_config = LoraConfig(
 
 # Prepare the model for LoRA fine-tuning
 model = get_peft_model(model, lora_config)
-model.train()  # Make sure the model is in training mode
-model.config.use_cache = False  # Disable caching (required for gradient checkpointing)
+
+# Enable training mode and disable caching
+model.train()
+model.config.use_cache = False
+
+# Print trainable parameters to verify
+trainable_params = 0
+all_param = 0
+for _, param in model.named_parameters():
+    all_param += param.numel()
+    if param.requires_grad:
+        trainable_params += param.numel()
+        param.requires_grad_(True)  # Explicitly enable gradients
+print(
+    f"trainable params: {trainable_params:,d} || "
+    f"all params: {all_param:,d} || "
+    f"trainable%: {100 * trainable_params / all_param:.2f}%"
+)
 
 # Define a function to tokenize the dataset
 def tokenize_function(examples):
@@ -91,8 +107,7 @@ trainer = Trainer(
     train_dataset=tokenized_dataset['train'],
     data_collator=DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
-        mlm=False,
-        pad_to_multiple_of=8
+        mlm=False
     )
 )
 
