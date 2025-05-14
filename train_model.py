@@ -98,7 +98,6 @@ def train_model(test_mode=False):
         # Training arguments
         training_args = TrainingArguments(
             output_dir="./training_results",
-            num_train_epochs=3,
             per_device_train_batch_size=2 if is_m1 else 4,
             gradient_accumulation_steps=8 if is_m1 else 4,
             learning_rate=2e-4,
