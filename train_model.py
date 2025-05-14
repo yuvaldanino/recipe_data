@@ -10,7 +10,7 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 import os
 
-def train_model(test_mode=True):
+def train_model(test_mode=False):
     try:
         # Check if we're on M1
         is_m1 = torch.backends.mps.is_available()
@@ -24,11 +24,11 @@ def train_model(test_mode=True):
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=torch.float16,
-            device_map="auto" if not is_m1 else None  # Don't use device_map on M1
+            device_map="auto" if not is_m1 else None
         )
         
         if is_m1:
-            model = model.to(device)  # Manually move to M1 device
+            model = model.to(device)
 
         # Load your dataset
         print("Loading dataset...")
@@ -99,17 +99,18 @@ def train_model(test_mode=True):
         training_args = TrainingArguments(
             output_dir="./training_results",
             num_train_epochs=3,
-            per_device_train_batch_size=2 if is_m1 else 4,  # Smaller batch size for M1
-            gradient_accumulation_steps=8 if is_m1 else 4,  # More gradient accumulation for M1
+            per_device_train_batch_size=2 if is_m1 else 4,
+            gradient_accumulation_steps=8 if is_m1 else 4,
             learning_rate=2e-4,
-            fp16=not is_m1,  # Don't use fp16 on M1
+            fp16=not is_m1,
             logging_steps=10,
             save_steps=100,
             save_total_limit=2,
             remove_unused_columns=False,
             report_to="none",
             optim="adamw_torch",
-            max_steps=1 if test_mode else None  # Only run 1 step in test mode
+            max_steps=1 if test_mode else None,
+            num_train_epochs=3 if not test_mode else None
         )
 
         # Initialize trainer
@@ -141,4 +142,4 @@ def train_model(test_mode=True):
         raise
 
 if __name__ == "__main__":
-    train_model(test_mode=False)  # Set to True for quick test 
+    train_model(test_mode=False)  # Set to False for full training 
