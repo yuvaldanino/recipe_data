@@ -10,7 +10,7 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 import os
 
-def train_model(test_mode=False):
+def train_model(test_mode=True):
     try:
         # Check if we're on M1
         is_m1 = torch.backends.mps.is_available()
@@ -141,4 +141,4 @@ def train_model(test_mode=False):
         raise
 
 if __name__ == "__main__":
-    train_model(test_mode=True)  # Set to True for quick test 
+    train_model(test_mode=False)  # Set to True for quick test 
