@@ -1,0 +1,6 @@
+vllm
+transformers
+torch
+accelerate
+tqdm
+requests 
