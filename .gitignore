@@ -68,3 +68,12 @@ coverage.xml
 
 # VS Code
 .vscode/ 
+
+# Hugging Face
+.cache/
+.huggingface/
+.tokenizers/
+.datasets/
+.datasets/
+tinyllama_model/
+training_results/

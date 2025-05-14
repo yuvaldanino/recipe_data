@@ -1,7 +1,4 @@
-import os
-import json
 import torch
-from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -9,116 +6,139 @@ from transformers import (
     Trainer,
     DataCollatorForLanguageModeling
 )
+from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
+import os
 
-# Load the prepared JSONL data
-dataset = load_dataset('json', data_files='processed_data/tinyllama_training_data.jsonl')
+def train_model(test_mode=True):
+    try:
+        # Check if we're on M1
+        is_m1 = torch.backends.mps.is_available()
+        device = "mps" if is_m1 else "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {device}")
 
-# Load the TinyLlama model and tokenizer
-model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch.float16,
-    device_map="auto"
-)
+        # Load the model and tokenizer from local directory
+        print("Loading model and tokenizer...")
+        model_path = "tinyllama_model"
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            device_map="auto" if not is_m1 else None  # Don't use device_map on M1
+        )
+        
+        if is_m1:
+            model = model.to(device)  # Manually move to M1 device
 
-# Configure LoRA
-lora_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM"
-)
+        # Load your dataset
+        print("Loading dataset...")
+        dataset = load_dataset('json', data_files='processed_data/tinyllama_training_data.jsonl')
 
-# Prepare the model for LoRA fine-tuning
-model = get_peft_model(model, lora_config)
+        # Configure LoRA
+        print("Configuring LoRA...")
+        lora_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM"
+        )
 
-# Enable training mode and disable caching
-model.train()
-model.config.use_cache = False
+        # Apply LoRA
+        print("Applying LoRA configuration...")
+        model = get_peft_model(model, lora_config)
+        
+        # Enable training mode
+        model.train()
+        model.config.use_cache = False
 
-# Print trainable parameters to verify
-trainable_params = 0
-all_param = 0
-for _, param in model.named_parameters():
-    all_param += param.numel()
-    if param.requires_grad:
-        trainable_params += param.numel()
-        param.requires_grad_(True)  # Explicitly enable gradients
-print(
-    f"trainable params: {trainable_params:,d} || "
-    f"all params: {all_param:,d} || "
-    f"trainable%: {100 * trainable_params / all_param:.2f}%"
-)
+        # Print trainable parameters
+        trainable_params = 0
+        all_param = 0
+        for _, param in model.named_parameters():
+            all_param += param.numel()
+            if param.requires_grad:
+                trainable_params += param.numel()
+        print(
+            f"trainable params: {trainable_params:,d} || "
+            f"all params: {all_param:,d} || "
+            f"trainable%: {100 * trainable_params / all_param:.2f}%"
+        )
 
-# Define a function to tokenize the dataset
-def tokenize_function(examples):
-    prompts = examples['prompt']
-    responses = examples['response']
-    full_texts = [p + ' ' + r for p, r in zip(prompts, responses)]
-    
-    # Tokenize with padding and truncation
-    model_inputs = tokenizer(
-        full_texts,
-        max_length=512,
-        padding="max_length",
-        truncation=True,
-        return_tensors="pt"
-    )
-    
-    # Create labels by copying input_ids
-    model_inputs["labels"] = model_inputs["input_ids"].clone()
-    
-    # Set padding tokens to -100 in labels
-    model_inputs["labels"][model_inputs["attention_mask"] == 0] = -100
-    
-    return model_inputs
+        def tokenize_function(examples):
+            # Combine prompt and response
+            texts = [f"{p} {r}" for p, r in zip(examples['prompt'], examples['response'])]
+            
+            # Tokenize
+            tokenized = tokenizer(
+                texts,
+                padding="max_length",
+                truncation=True,
+                max_length=512,
+                return_tensors="pt"
+            )
+            
+            # Create labels
+            tokenized["labels"] = tokenized["input_ids"].clone()
+            
+            # Set padding tokens to -100 in labels
+            tokenized["labels"][tokenized["attention_mask"] == 0] = -100
+            
+            return tokenized
 
-# Tokenize the dataset
-tokenized_dataset = dataset.map(
-    tokenize_function,
-    batched=True,
-    remove_columns=dataset["train"].column_names
-)
+        # Tokenize dataset
+        print("Tokenizing dataset...")
+        tokenized_dataset = dataset.map(
+            tokenize_function,
+            batched=True,
+            remove_columns=dataset["train"].column_names
+        )
 
-# Define training arguments
-training_args = TrainingArguments(
-    output_dir="./results",
-    num_train_epochs=3,
-    per_device_train_batch_size=4,
-    save_steps=500,
-    save_total_limit=2,
-    logging_steps=100,
-    learning_rate=5e-5,
-    weight_decay=0.01,
-    fp16=True,  # Enable mixed precision training
-    gradient_accumulation_steps=4,
-    gradient_checkpointing=True,
-    report_to="none"
-)
+        # Training arguments
+        training_args = TrainingArguments(
+            output_dir="./training_results",
+            num_train_epochs=3,
+            per_device_train_batch_size=2 if is_m1 else 4,  # Smaller batch size for M1
+            gradient_accumulation_steps=8 if is_m1 else 4,  # More gradient accumulation for M1
+            learning_rate=2e-4,
+            fp16=not is_m1,  # Don't use fp16 on M1
+            logging_steps=10,
+            save_steps=100,
+            save_total_limit=2,
+            remove_unused_columns=False,
+            report_to="none",
+            optim="adamw_torch",
+            max_steps=1 if test_mode else None  # Only run 1 step in test mode
+        )
 
-# Initialize the Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_dataset['train'],
-    data_collator=DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False
-    )
-)
+        # Initialize trainer
+        print("Initializing trainer...")
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_dataset["train"],
+            data_collator=DataCollatorForLanguageModeling(
+                tokenizer=tokenizer,
+                mlm=False
+            )
+        )
 
-# Train the model
-trainer.train()
+        # Train
+        print("Starting training...")
+        trainer.train()
 
-# Merge LoRA weights into the base model
-model = model.merge_and_unload()
+        if not test_mode:
+            # Save the final model
+            print("Saving final model...")
+            model.save_pretrained("final_model")
+            tokenizer.save_pretrained("final_model")
+        
+        print("Setup verification completed successfully!" if test_mode else "Training completed successfully!")
 
-# Save locally
-model.save_pretrained("merged_model")
-tokenizer.save_pretrained("merged_model")
+    except Exception as e:
+        print(f"An error occurred during training: {str(e)}")
+        raise
 
-print("Training complete and model saved locally!") 
+if __name__ == "__main__":
+    train_model(test_mode=True)  # Set to True for quick test 
