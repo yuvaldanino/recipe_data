@@ -45,19 +45,30 @@ def tokenize_function(examples):
     prompts = examples['prompt']
     responses = examples['response']
     full_texts = [p + ' ' + r for p, r in zip(prompts, responses)]
-    tokens = tokenizer(full_texts, truncation=True, padding="max_length", max_length=512)
     
-    # Set labels to -100 for prompt tokens (we don't want to compute loss on these)
-    labels = tokens["input_ids"].copy()
-    for i, text in enumerate(full_texts):
-        prompt_tokens = tokenizer(prompts[i], truncation=True, padding="max_length", max_length=512)["input_ids"]
-        labels[i][:len(prompt_tokens)] = [-100] * len(prompt_tokens)
+    # Tokenize with padding and truncation
+    model_inputs = tokenizer(
+        full_texts,
+        max_length=512,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt"
+    )
     
-    tokens["labels"] = labels
-    return tokens
+    # Create labels by copying input_ids
+    model_inputs["labels"] = model_inputs["input_ids"].clone()
+    
+    # Set padding tokens to -100 in labels
+    model_inputs["labels"][model_inputs["attention_mask"] == 0] = -100
+    
+    return model_inputs
 
 # Tokenize the dataset
-tokenized_dataset = dataset.map(tokenize_function, batched=True)
+tokenized_dataset = dataset.map(
+    tokenize_function,
+    batched=True,
+    remove_columns=dataset["train"].column_names
+)
 
 # Define training arguments
 training_args = TrainingArguments(
@@ -80,9 +91,7 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset['train'],
-    data_collator = DataCollatorForLanguageModeling(
-                    tokenizer=tokenizer, mlm=False)
-
+    data_collator=None  # We don't need a data collator since we're handling padding in tokenization
 )
 
 # Train the model
