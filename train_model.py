@@ -7,7 +7,7 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForSeq2SeqLM,
+    DataCollatorForLanguageModeling,
     BitsAndBytesConfig
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -80,7 +80,9 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset['train'],
-    data_collator=DataCollatorForSeq2SeqLM(tokenizer=tokenizer, padding=True)
+    data_collator = DataCollatorForLanguageModeling(
+                    tokenizer=tokenizer, mlm=False)
+
 )
 
 # Train the model
