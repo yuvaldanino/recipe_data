@@ -12,5 +12,4 @@ accelerate>=0.20.0
 peft>=0.4.0
 scipy
 huggingface_hub
-bitsandbytes>=0.41.0 ; platform_system != 'Windows'
 sentencepiece

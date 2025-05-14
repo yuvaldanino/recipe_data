@@ -19,7 +19,7 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    load_in_4bit=True,
+    torch_dtype=torch.bfloat16,
     device_map="auto"
 )
 
@@ -34,7 +34,6 @@ lora_config = LoraConfig(
 )
 
 # Prepare the model for LoRA fine-tuning
-model = prepare_model_for_kbit_training(model)
 model = get_peft_model(model, lora_config)
 model.config.use_cache = False  # Required for gradient checkpointing
 
