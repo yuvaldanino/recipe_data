@@ -7,7 +7,7 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling,
+    DataCollatorForSeq2SeqLM,
     BitsAndBytesConfig
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -46,7 +46,14 @@ def tokenize_function(examples):
     responses = examples['response']
     full_texts = [p + ' ' + r for p, r in zip(prompts, responses)]
     tokens = tokenizer(full_texts, truncation=True, padding="max_length", max_length=512)
-    tokens["labels"] = tokens["input_ids"].copy()
+    
+    # Set labels to -100 for prompt tokens (we don't want to compute loss on these)
+    labels = tokens["input_ids"].copy()
+    for i, text in enumerate(full_texts):
+        prompt_tokens = tokenizer(prompts[i], truncation=True, padding="max_length", max_length=512)["input_ids"]
+        labels[i][:len(prompt_tokens)] = [-100] * len(prompt_tokens)
+    
+    tokens["labels"] = labels
     return tokens
 
 # Tokenize the dataset
@@ -73,7 +80,7 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset['train'],
-    data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    data_collator=DataCollatorForSeq2SeqLM(tokenizer=tokenizer, padding=True)
 )
 
 # Train the model
