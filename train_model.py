@@ -10,7 +10,7 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
 import os
 
-def train_model(test_mode=False):
+def train_model(test_mode=False, resume_from_checkpoint=None):
     try:
         # Check if we're on M1
         is_m1 = torch.backends.mps.is_available()
@@ -108,8 +108,8 @@ def train_model(test_mode=False):
             remove_unused_columns=False,
             report_to="none",
             optim="adamw_torch",
-            max_steps=1 if test_mode else -1,  # -1 means run for all epochs
-            num_train_epochs=3  # Always set epochs, test mode will stop after 1 step
+            max_steps=1 if test_mode else -1,
+            num_train_epochs=3
         )
 
         # Initialize trainer
@@ -126,7 +126,11 @@ def train_model(test_mode=False):
 
         # Train
         print("Starting training...")
-        trainer.train()
+        if resume_from_checkpoint:
+            print(f"Resuming from checkpoint: {resume_from_checkpoint}")
+            trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        else:
+            trainer.train()
 
         if not test_mode:
             # Save the final model
@@ -141,4 +145,15 @@ def train_model(test_mode=False):
         raise
 
 if __name__ == "__main__":
-    train_model(test_mode=False) 
+    # Check for latest checkpoint
+    checkpoint_dir = "./training_results"
+    if os.path.exists(checkpoint_dir):
+        checkpoints = [d for d in os.listdir(checkpoint_dir) if d.startswith("checkpoint-")]
+        if checkpoints:
+            latest_checkpoint = max(checkpoints, key=lambda x: int(x.split("-")[1]))
+            print(f"Found checkpoint: {latest_checkpoint}")
+            train_model(test_mode=False, resume_from_checkpoint=os.path.join(checkpoint_dir, latest_checkpoint))
+        else:
+            train_model(test_mode=False)
+    else:
+        train_model(test_mode=False) 
