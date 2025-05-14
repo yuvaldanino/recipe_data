@@ -108,8 +108,8 @@ def train_model(test_mode=False):
             remove_unused_columns=False,
             report_to="none",
             optim="adamw_torch",
-            max_steps=1 if test_mode else None,
-            num_train_epochs=3 if not test_mode else None
+            max_steps=1 if test_mode else -1,  # -1 means run for all epochs
+            num_train_epochs=3  # Always set epochs, test mode will stop after 1 step
         )
 
         # Initialize trainer
@@ -141,4 +141,4 @@ def train_model(test_mode=False):
         raise
 
 if __name__ == "__main__":
-    train_model(test_mode=False)  # Set to False for full training 
+    train_model(test_mode=False) 
