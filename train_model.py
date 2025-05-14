@@ -36,9 +36,13 @@ lora_config = LoraConfig(
 
 # Prepare the model for LoRA fine-tuning
 model = get_peft_model(model, lora_config)
-model.train()                      # Make sure the model is in training mode
-model.config.use_cache = False    # Disable caching (required for gradient checkpointing)
-model.config.return_dict = True   # Ensure outputs are returned as a dict
+model.train()  # Make sure the model is in training mode
+model.config.use_cache = False  # Disable caching (required for gradient checkpointing)
+
+# Enable gradient computation for all parameters
+for param in model.parameters():
+    if param.requires_grad:
+        param.data = param.data.to(torch.float16)
 
 # Define a function to tokenize the dataset
 def tokenize_function(examples):
