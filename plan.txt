@@ -1,3 +1,14 @@
+1. Train the model with LoRA on EC2 GPU	
+✅ 2. Merge LoRA into base model (optional but recommended for vLLM)	
+✅ 3. Push merged model to Hugging Face Hub	
+✅ 4. Spin up a vLLM server on another EC2 GPU instance	
+✅ 5. Pull model from HF and serve using vllm	
+✅ 6. Expose /v1/chat/completions endpoint	
+✅ 7. Connect it to ChefGPT like you're using OpenAI
+
+
+
+
 Step-by-Step Plan
 1. Define Scope & Requirements
 Goal: Collect general cooking tips (not just recipe steps) from reputable recipe websites.
