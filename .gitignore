@@ -10,6 +10,7 @@ __pycache__/
 .Python
 env/
 venv/
+vllm_env/
 build/
 develop-eggs/
 dist/

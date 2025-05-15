@@ -20,7 +20,7 @@ def main():
     
     # Test the model with a simple prompt
     print("Testing model with a prompt...")
-    prompts = ["Write a recipe for chocolate chip cookies:"]
+    prompts = ["whats the best thing to eat with tomatoes"]
     
     # Generate
     outputs = model.generate(prompts, sampling_params)
