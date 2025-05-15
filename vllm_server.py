@@ -5,7 +5,7 @@ def main():
     # Initialize the model
     print("Loading model...")
     model = LLM(
-        model="merged_model",  # Use the merged model
+        model="ydanino/tinyllama-recipe-merged",  # Your Hugging Face model path
         tensor_parallel_size=1,  # Number of GPUs to use
         gpu_memory_utilization=0.9,  # How much GPU memory to use
         trust_remote_code=True

@@ -1,9 +1,20 @@
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-import torch
+import os
+
+def check_versions():
+    print(f"PyTorch version: {torch.__version__}")
+    import transformers
+    print(f"Transformers version: {transformers.__version__}")
+    import peft
+    print(f"PEFT version: {peft.__version__}")
 
 def merge_lora_weights():
     try:
+        # Check versions first
+        check_versions()
+        
         print("Loading base model...")
         base_model = AutoModelForCausalLM.from_pretrained(
             "tinyllama_model",
@@ -16,6 +27,9 @@ def merge_lora_weights():
         
         print("Merging LoRA weights with base model...")
         merged_model = model.merge_and_unload()
+        
+        # Create directory if it doesn't exist
+        os.makedirs("merged_model", exist_ok=True)
         
         print("Saving merged model...")
         merged_model.save_pretrained("merged_model")
